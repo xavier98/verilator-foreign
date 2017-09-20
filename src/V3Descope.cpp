@@ -212,7 +212,8 @@ private:
 	if (!m_scopep) nodep->v3fatalSrc("Node not under scope");
 	if (!nodep->funcp()->scopep()) nodep->v3fatalSrc("CFunc not under scope");
 	bool hierThis;
-	nodep->hiername(descopedName(nodep->funcp()->scopep(), hierThis/*ref*/));
+	if (!nodep->funcp()->isStatic())
+	    nodep->hiername(descopedName(nodep->funcp()->scopep(), hierThis/*ref*/));
 	// Can't do this, as we may have more calls later
 	// nodep->funcp()->scopep(NULL);
     }

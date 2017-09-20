@@ -664,6 +664,7 @@ void V3Options::parseOptsList(FileLine* fl, const string& optdir, int argc, char
 	    else if ( !strcmp (sw, "-private") )		{ m_public = false; }
 	    else if ( onoff   (sw, "-profile-cfuncs", flag/*ref*/) )	{ m_profileCFuncs = flag; }
 	    else if ( onoff   (sw, "-public", flag/*ref*/) )		{ m_public = flag; }
+	    else if ( onoff   (sw, "-gen-foreign-interface", flag/*ref*/) )	{ m_genForeignInterface = flag; }
             else if ( !strncmp(sw, "-pvalue+", strlen("-pvalue+")))	{ addParameter(string(sw+strlen("-pvalue+")), false); }
 	    else if ( onoff   (sw, "-report-unoptflat", flag/*ref*/) )	{ m_reportUnoptflat = flag; }
 	    else if ( onoff   (sw, "-relative-includes", flag/*ref*/) )	{ m_relativeIncludes = flag; }
@@ -1177,6 +1178,7 @@ V3Options::V3Options() {
     m_preprocOnly = false;
     m_preprocNoLine = false;
     m_public = false;
+    m_genForeignInterface = false;
     m_reportUnoptflat = false;
     m_relativeIncludes = false;
     m_savable = false;

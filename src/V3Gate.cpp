@@ -269,6 +269,7 @@ public:
 	m_buffersOnly = buffersOnly;
 	m_lhsVarRef = NULL;
 	m_dedupe = dedupe;
+
 	// Iterate
 	nodep->accept(*this);
 	// Check results
@@ -310,18 +311,30 @@ private:
     AstUser2InUse	m_inuser2;
 
     // STATE
-    V3Graph		m_graph;	// Scoreboard of var usages/dependencies
-    GateLogicVertex*	m_logicVertexp;	// Current statement being tracked, NULL=ignored
-    AstScope*		m_scopep;	// Current scope being processed
-    AstNodeModule*	m_modp;		// Current module
-    AstActive*		m_activep;	// Current active
+    V3Graph		m_graph;	  // Scoreboard of var usages/dependencies
+    GateLogicVertex*	m_logicVertexp;	  // Current statement being tracked, NULL=ignored
+    AstScope*		m_scopep;	  // Current scope being processed
+    AstNodeModule*	m_modp;		  // Current module
+    AstActive*		m_activep;	  // Current active
     bool		m_activeReducible;	// Is activation block reducible?
-    bool		m_inSenItem;	// Underneath AstSenItem; any varrefs are clocks
-    bool		m_inSlow;	// Inside a slow structure
-    V3Double0		m_statSigs;	// Statistic tracking
-    V3Double0		m_statRefs;	// Statistic tracking
+    bool		m_inSenItem;	  // Underneath AstSenItem; any varrefs are clocks
+    bool		m_inSlow;	  // Inside a slow structure
+    V3Double0		m_statSigs;	  // Statistic tracking
+    V3Double0		m_statRefs;	  // Statistic tracking
     V3Double0		m_statDedupLogic;	// Statistic tracking
     V3Double0		m_statAssignMerged;	// Statistic tracking
+
+    multimap<pair<AstForeignInstance*,string>, GateLogicVertex*> m_foreignEvalVertices;
+    struct ForeignEdgeInfo {
+	AstForeignInstance* m_fi;
+	string m_from_fe;
+	string m_to_fe;
+	ForeignEdgeInfo(AstForeignInstance* fi, string from_fe, string to_fe)
+	    : m_fi(fi), m_from_fe(from_fe), m_to_fe(to_fe) {
+	}
+    };
+    vector<ForeignEdgeInfo> m_foreign_edge_info;
+    AstForeignEval* m_fe;
 
     // METHODS
     void iterateNewStmt(AstNode* nodep, const char* nonReducibleReason, const char* consumeReason) {
@@ -378,6 +391,7 @@ private:
     // VISITORS
     virtual void visit(AstNetlist* nodep) {
 	nodep->iterateChildren(*this);
+	connectForeignEvals();
 	//if (debug()>6) m_graph.dump();
 	if (debug()>6) m_graph.dumpDotFilePrefixed("gate_pre");
 	warnSignals();  // Before loss of sync/async pointers
@@ -507,6 +521,35 @@ private:
 	nodep->iterateChildren(*this);
     }
 
+    virtual void visit(AstForeignEval* nodep) {
+	m_fe = nodep;
+	m_foreignEvalVertices.insert
+	    (make_pair(make_pair(nodep->foreignInstance(),nodep->name()),m_logicVertexp));
+	nodep->iterateChildren(*this);
+	m_fe = NULL;
+    }
+    virtual void visit(AstForeignDepend* nodep) {
+	m_foreign_edge_info.push_back(ForeignEdgeInfo(m_fe->foreignInstance(),nodep->name(),m_fe->name()));
+    }
+    void connectForeignEvals() {
+	for (size_t i=0;i<m_foreign_edge_info.size();++i) {
+	    ForeignEdgeInfo& fei = m_foreign_edge_info[i];
+	    multimap<pair<AstForeignInstance*,string>, GateLogicVertex*>::iterator
+		from_it = m_foreignEvalVertices.find(make_pair(fei.m_fi, fei.m_from_fe));
+	    if (from_it == m_foreignEvalVertices.end())
+		continue;
+	    multimap<pair<AstForeignInstance*,string>, GateLogicVertex*>::iterator
+		to_it = m_foreignEvalVertices.find(make_pair(fei.m_fi, fei.m_to_fe));
+	    if (to_it == m_foreignEvalVertices.end())
+		continue;
+	    GateLogicVertex* from_v = from_it->second;
+	    GateLogicVertex* to_v = to_it->second;
+	    new V3GraphEdge(&m_graph, from_v, to_v, 1);
+	}
+	m_foreignEvalVertices.clear();
+	m_foreign_edge_info.clear();
+    }
+
     //--------------------
     // Default
     virtual void visit(AstNode* nodep) {
@@ -525,6 +568,7 @@ public:
 	m_activeReducible = true;
 	m_inSenItem = false;
 	m_inSlow = false;
+	m_fe = NULL;
 	nodep->accept(*this);
     }
     virtual ~GateVisitor() {
@@ -680,6 +724,9 @@ bool GateVisitor::elimLogicOkOutputs(GateLogicVertex* consumeVertexp, const Gate
     }
     for (V3GraphEdge* edgep = consumeVertexp->outBeginp(); edgep; edgep = edgep->outNextp()) {
 	GateVarVertex* consVVertexp = dynamic_cast<GateVarVertex*>(edgep->top());
+	if (!consVVertexp) {
+	    return false;
+	}
 	AstVarScope* vscp = consVVertexp->varScp();
 	if (varscopes.find(vscp) != varscopes.end()) {
 	    UINFO(9,"    Block-unopt, insertion generates input vscp "<<vscp<<endl);
@@ -1081,10 +1128,16 @@ private:
     // Given iterated logic, starting at vu which was consumer's GateVarVertex
     // Returns a varref that has the same logic input; or NULL if none
     virtual VNUser visit(GateLogicVertex* lvertexp, VNUser vu) {
-	lvertexp->iterateInEdges(*this);
+	if (m_depth > GATE_DEDUP_MAX_DEPTH) return VNUser(0);  // Break loops; before user2 set so hit this vertex later
+	if (lvertexp->nodep()->user2()) return VNUser(0);
+	lvertexp->nodep()->user2(true);
 
-	GateVarVertex* consumerVvertexpp = (GateVarVertex*) vu.toGraphVertex();
-	if (lvertexp->dedupable() && consumerVvertexpp->dedupable()) {
+	m_depth++;
+	lvertexp->iterateInEdges(*this);
+	m_depth--;
+
+	GateVarVertex* consumerVvertexpp = dynamic_cast<GateVarVertex*>(vu.toGraphVertex());
+	if (lvertexp->dedupable() && consumerVvertexpp && consumerVvertexpp->dedupable()) {
 	    AstNode* nodep = lvertexp->nodep();
 	    AstVarScope* consumerVarScopep = consumerVvertexpp->varScp();
 	    // TODO: Doing a simple pointer comparison of  activep won't work

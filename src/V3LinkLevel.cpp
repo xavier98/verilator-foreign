@@ -91,12 +91,18 @@ void V3LinkLevel::wrapTop(AstNetlist* netlistp) {
     // We do ONLY the top module
     AstNodeModule* oldmodp = netlistp->modulesp();
     if (!oldmodp) netlistp->v3fatalSrc("No module found to process");
+
+    if (oldmodp->foreignInterface())
+	oldmodp->v3fatalSrc("foreign_interface module cannot be top");
+
     AstNodeModule* newmodp = new AstModule(oldmodp->fileline(), (string)"TOP_"+oldmodp->name());
     // Make the new module first in the list
     oldmodp->unlinkFrBackWithNext();
     newmodp->addNext(oldmodp);
     newmodp->level(1);
     newmodp->modPublic(true);
+    newmodp->foreignModule(oldmodp->foreignModule());
+    newmodp->foreignName(oldmodp->name());
     netlistp->addModulep(newmodp);
 
     // TODO the module creation above could be done after linkcells, but

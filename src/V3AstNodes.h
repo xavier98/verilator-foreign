@@ -3080,19 +3080,142 @@ public:
 class AstPragma : public AstNode {
 private:
     AstPragmaType	m_pragType;	// Type of pragma
+    string m_arg;
 public:
     // Pragmas don't result in any output code, they're just flags that affect
     // other processing in verilator.
-    AstPragma(FileLine* fl, AstPragmaType pragType)
+    AstPragma(FileLine* fl, AstPragmaType pragType, string arg = string())
 	: AstNode(fl) {
 	m_pragType = pragType;
+	m_arg = arg;
     }
     ASTNODE_NODE_FUNCS(Pragma)
     AstPragmaType	pragType() 	const { return m_pragType; }	// *=type of the pragma
-    virtual V3Hash sameHash() const { return V3Hash(pragType()); }
+    string arg() const { return m_arg; }
+    virtual V3Hash sameHash() const { return V3Hash(V3Hash(pragType()),V3Hash(m_arg)); }
     virtual bool isPredictOptimizable() const { return false; }
     virtual bool same(AstNode* samep) const {
-	return pragType()==samep->castPragma()->pragType(); }
+	return pragType()==samep->castPragma()->pragType() &&
+	    arg() == samep->castPragma()->arg(); }
+};
+
+class AstForeignInstance : public AstNode {
+    string m_name;
+    string m_modname;
+public:
+    AstForeignInstance(FileLine* fl, const string& name, const string& modname)
+	: AstNode(fl), m_name(name), m_modname(modname) {
+    }
+    ASTNODE_NODE_FUNCS(ForeignInstance)
+    string name() const { return m_name; }
+    string modName() const { return m_modname; }
+    virtual bool isPure() const { return false; }
+    virtual bool isOutputter() const { return true; }
+    virtual bool isPredictOptimizable() const { return false; }
+    virtual bool isGateOptimizable() const { return false; }
+    virtual void dump(ostream& str);
+    virtual bool hasDType() const { return false; }
+    virtual V3Hash sameHash() const { return V3Hash(); }
+    virtual bool same(AstNode* samep) const {
+	return m_name==samep->castForeignInstance()->m_name &&
+	    m_modname==samep->castForeignInstance()->m_modname; }
+};
+
+class AstForeignEval : public AstNode {
+    string m_name;
+    AstForeignInstance* m_fi;
+public:
+    AstForeignEval(FileLine* fl, const string& name)
+	: AstNode(fl), m_fi(0), m_name(name) {
+    }
+    AstForeignEval(FileLine* fl, AstNode* unconditional_writes)
+	: AstNode(fl), m_fi(0) {
+	addWrite(unconditional_writes);
+    }
+    ASTNODE_NODE_FUNCS(ForeignEval)
+    string name() const { return m_name; }
+    void foreignInstance(AstForeignInstance* fi) { m_fi = fi; }
+    AstForeignInstance* foreignInstance() { return m_fi; }
+    bool unconditional() const { return m_name.empty(); }
+
+    void addDepend(AstNode* var) { addOp1p(var); }
+    AstNode* depends() const { return op1p(); }
+    
+    void addWrite(AstNode* var) { addOp2p(var); }
+    AstNode* writes() const { return op2p(); }
+
+    void addRead(AstNode* var) { addOp3p(var); }
+    AstNode* reads() const { return op3p(); }
+    
+    virtual void cloneRelink() { if (m_fi && m_fi->clonep()) m_fi = m_fi->clonep(); }
+    virtual bool isPredictOptimizable() const { return false; }
+    virtual bool isGateOptimizable() const { return false; }
+    virtual bool isGateDedupable() const { return false; }
+    virtual bool isPure() const { return !unconditional(); }
+    virtual bool isOutputter() const { return unconditional(); }
+    virtual void dump(ostream& str);
+    virtual bool hasDType() const { return false; }
+    virtual V3Hash sameHash() const { return V3Hash(); }
+    virtual bool same(AstNode* samep) const { return m_name==samep->castForeignEval()->m_name; }
+};
+
+class AstForeignDepend : public AstNode {
+    string m_name;
+public:
+    AstForeignDepend(FileLine* fl, const string& name)
+	: AstNode(fl), m_name(name) {
+    }
+    ASTNODE_NODE_FUNCS(ForeignDepend)
+    string name() const { return m_name; }
+    virtual bool isPredictOptimizable() const { return false; }
+    virtual bool isGateOptimizable() const { return false; }
+    virtual bool isGateDedupable() const { return false; }
+    virtual bool hasDType() const { return false; }
+    virtual V3Hash sameHash() const { return V3Hash(); }
+    virtual bool same(AstNode* samep) const { return m_name==samep->castForeignDepend()->m_name; }
+};
+
+class AstForeignRead : public AstNode {
+    string m_name;
+    bool m_post; // true if this is the output of AstAssignPost in inner module
+public:
+    AstForeignRead(FileLine* fl, const string& name, AstNode* dst, bool post)
+	: AstNode(fl), m_name(name), m_post(post) {
+	dtypeFrom(dst);
+	setOp1p(dst);
+    }
+    ASTNODE_NODE_FUNCS(ForeignRead)
+    string name() const { return m_name; }
+    AstNode* dst() const { return op1p(); }
+    bool isPost() const { return m_post; }
+    virtual bool isPredictOptimizable() const { return false; }
+    virtual bool isGateOptimizable() const { return false; }
+    virtual bool isGateDedupable() const { return false; }
+    virtual void dump(ostream& str);
+    virtual bool hasDType() const { return false; }
+    virtual V3Hash sameHash() const { return V3Hash(); }
+    virtual bool same(AstNode* samep) const {
+	return m_name==samep->castForeignRead()->m_name &&
+	    m_post==samep->castForeignRead()->m_post; }
+};
+
+class AstForeignWrite : public AstNode {
+    string m_name;
+public:
+    AstForeignWrite(FileLine* fl, const string& name, AstNode* src)
+	: AstNode(fl), m_name(name) {
+	dtypeFrom(src);
+	setOp1p(src);
+    }
+    ASTNODE_NODE_FUNCS(ForeignWrite)
+    string name() const { return m_name; }
+    AstNode* src() const { return op1p(); }
+    virtual bool isPredictOptimizable() const { return false; }
+    virtual bool isGateOptimizable() const { return false; }
+    virtual bool isGateDedupable() const { return false; }
+    virtual bool hasDType() const { return false; }
+    virtual V3Hash sameHash() const { return V3Hash(); }
+    virtual bool same(AstNode* samep) const { return m_name==samep->castForeignWrite()->m_name; }
 };
 
 class AstStop : public AstNodeStmt {

@@ -212,6 +212,7 @@ RAW_OBJS = \
 	V3Number.o \
 	V3Options.o \
 	V3Order.o \
+	V3EmitFI.o \
 	V3Os.o \
 	V3Param.o \
 	V3PreShell.o \

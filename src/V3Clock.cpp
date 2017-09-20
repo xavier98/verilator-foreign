@@ -315,6 +315,15 @@ private:
 	nodep->deleteTree(); VL_DANGLING(nodep);
     }
     virtual void visit(AstCFunc* nodep) {
+
+	// If _foreign_uncond was generated, call it from bottom of _eval
+	if (nodep->name() == "_foreign_uncond") {
+	    AstCCall* callp = new AstCCall(nodep->fileline(), nodep);
+	    callp->argTypes("vlSymsp");
+	    m_evalFuncp->addFinalsp(callp);
+	    return;
+	}
+	
 	nodep->iterateChildren(*this);
 	// Link to global function
 	if (nodep->formCallTree()) {

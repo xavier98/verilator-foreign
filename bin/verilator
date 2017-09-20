@@ -325,6 +325,7 @@ descriptions in the next sections for more information.
     --profile-cfuncs            Name functions for profiling
     --private                   Debugging; see docs
     --public                    Debugging; see docs
+    --gen-foreign-interface     Generate foreign interface file(s) for top module(s)
      -pvalue+<name>=<value>     Overwrite toplevel parameter
     --relative-includes         Resolve includes relative to current file
     --report-unoptflat          Extra diagnostics for UNOPTFLAT
@@ -1024,6 +1025,12 @@ optimizations as if all signals had a /*verilator public*/ comments and
 inlining.  This will also turn off inlining as if all modules had a
 /*verilator public_module*/, unless the module specifically enabled it with
 /*verilator inline_module*/.
+
+=item --gen-foreign-interface
+
+Declare all top modules as foreign_module, and generate foreign interface
+files for them. Instead of using this option, /*verilator foreign_module*/
+can be placed in modules a foreign interface should be generated for.
 
 =item -pvalue+I<name>=I<value>
 

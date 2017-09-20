@@ -59,6 +59,16 @@ void V3ParseImp::ppline (const char* textp) {
     fileline()->lineDirective(textp, enterExit/*ref*/);
 }
 
+string V3ParseImp::verilatorCmtSymbol(const char* textp) {
+    const char* sp = textp;
+    while (*sp && !isspace(*sp)) sp++;  while (*sp && isspace(*sp)) sp++;
+    while (*sp && !isspace(*sp)) sp++;  while (*sp && isspace(*sp)) sp++;
+    string msg = sp;
+    string::size_type pos;
+    if ((pos=msg.find("*")) != string::npos) { msg.erase(pos); }
+    return msg;
+}
+ 
 void V3ParseImp::verilatorCmtLint(const char* textp, bool warnOff) {
     const char* sp = textp;
     while (*sp && !isspace(*sp)) sp++;  while (*sp && isspace(*sp)) sp++;
@@ -246,6 +256,7 @@ vnum	{vnum1}|{vnum2}|{vnum3}|{vnum4}|{vnum5}
   /*     Keywords */
   "always"		{ FL; return yALWAYS; }
   "and"			{ FL; return yAND; }
+  "foreign_settle"	{ FL; return yFOREIGN_SETTLE; }
   "assign"		{ FL; return yASSIGN; }
   "begin"		{ FL; return yBEGIN; }
   "buf"			{ FL; return yBUF; }
@@ -685,6 +696,13 @@ vnum	{vnum1}|{vnum2}|{vnum3}|{vnum4}|{vnum5}
   "/*verilator public_flat_rd*/"	{ FL; return yVL_PUBLIC_FLAT_RD; }
   "/*verilator public_flat_rw*/"	{ FL; return yVL_PUBLIC_FLAT_RW; }  // The @(edge) is converted by the preproc
   "/*verilator public_module*/"		{ FL; return yVL_PUBLIC_MODULE; }
+  "/*verilator foreign_module*/"	{ FL; return yVL_FOREIGN_MODULE; }
+  "/*verilator foreign_interface"[^*]*"*/"   { FL; yylval.strp = PARSEP->newString(PARSEP->verilatorCmtSymbol(yytext)); return yVL_FOREIGN_INTERFACE; }
+  "/*verilator foreign_eval"[^*]*"*/"   { FL; yylval.strp = PARSEP->newString(PARSEP->verilatorCmtSymbol(yytext)); return yVL_FOREIGN_EVAL; }
+  "/*verilator foreign_depend"[^*]*"*/"  { FL; yylval.strp = PARSEP->newString(PARSEP->verilatorCmtSymbol(yytext)); return yVL_FOREIGN_DEPEND; }
+  "/*verilator foreign_write"[^*]*"*/"  { FL; yylval.strp = PARSEP->newString(PARSEP->verilatorCmtSymbol(yytext)); return yVL_FOREIGN_WRITE; }
+  "/*verilator foreign_read_post"[^*]*"*/"   { FL; yylval.strp = PARSEP->newString(PARSEP->verilatorCmtSymbol(yytext)); return yVL_FOREIGN_READ_POST; }
+  "/*verilator foreign_read"[^*]*"*/"   { FL; yylval.strp = PARSEP->newString(PARSEP->verilatorCmtSymbol(yytext)); return yVL_FOREIGN_READ; }
   "/*verilator sc_clock*/"		{ FL; return yVL_CLOCK; }
   "/*verilator clocker*/"		{ FL; return yVL_CLOCKER; }
   "/*verilator no_clocker*/"		{ FL; return yVL_NO_CLOCKER; }

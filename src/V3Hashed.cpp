@@ -62,10 +62,11 @@ private:
     // METHODS
     void nodeHashIterate(AstNode* nodep) {
 	if (!nodep->user4()) {
-	    if (nodep->backp()->castCFunc()
-		&& !(nodep->castNodeStmt() || nodep->castCFunc())) {
-		nodep->v3fatalSrc("Node "<<nodep->prettyTypeName()<<" in statement position but not marked stmt (node under function)");
-	    }
+	    // * fix this; to allow AstText under cfunc or equiv
+	    // if (nodep->backp()->castCFunc()
+	    // 	&& !(nodep->castNodeStmt() || nodep->castCFunc())) {
+	    // 	nodep->v3fatalSrc("Node "<<nodep->prettyTypeName()<<" in statement position but not marked stmt (node under function)");
+	    // }
 	    V3Hash oldHash = m_lowerHash;
 	    {
 		m_lowerHash = nodep->sameHash();

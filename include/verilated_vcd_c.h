@@ -87,6 +87,8 @@ private:
     bool		m_fullDump;	///< True indicates dump ignoring if changed
     vluint32_t		m_nextCode;	///< Next code number to assign
     string		m_modName;	///< Module name being traced now
+    vector<string> m_scope;             ///< Inter-module scope
+    string m_scope_concat;              ///< Concat form of inter-module m_scope
     double		m_timeRes;	///< Time resolution (ns/ms etc)
     double		m_timeUnit;	///< Time units (ns/ms etc)
     vluint64_t		m_timeLastDump;	///< Last time we did a dump
@@ -195,6 +197,10 @@ public:
 
     /// Inside dumping routines, declare a module
     void module (const string& name);
+    /// Inside dumping routines, push/pop scopes
+    void pushScope (const string& name);
+    void popScope ();
+    size_t scopeDepth () const;
     /// Inside dumping routines, declare a signal
     void declBit      (vluint32_t code, const char* name, int arraynum);
     void declBus      (vluint32_t code, const char* name, int arraynum, int msb, int lsb);

@@ -184,7 +184,8 @@ private:
 		}
 	    }
 	}
-	if (!nodep->sensp()->castNodeVarRef()
+	if (!nodep->isSettle()
+	    && !nodep->sensp()->castNodeVarRef()
 	    && !nodep->sensp()->castEnumItemRef()  // V3Const will cleanup
 	    && !nodep->isIllegal()) {
 	    if (debug()) nodep->dumpTree(cout,"-tree: ");
@@ -250,6 +251,17 @@ private:
 	    if (!v3Global.opt.coverageLine()) {  // No need for block statements; may optimize better without
 		nodep->unlinkFrBack(); pushDeletep(nodep); VL_DANGLING(nodep);
 	    }
+	}
+	else if (nodep->pragType() == AstPragmaType::FOREIGN_MODULE) {
+	    if (!m_modp) nodep->v3fatalSrc("FOREIGN_MODULE not under a module");
+	    m_modp->foreignModule(true);
+	    nodep->unlinkFrBack(); pushDeletep(nodep); VL_DANGLING(nodep);
+	}
+	else if (nodep->pragType() == AstPragmaType::FOREIGN_INTERFACE) {
+	    if (!m_modp) nodep->v3fatalSrc("FOREIGN_INTERFACE not under a module");
+	    m_modp->foreignInterface(true);
+	    m_modp->foreignName(nodep->arg());
+	    nodep->unlinkFrBack(); pushDeletep(nodep); VL_DANGLING(nodep);
 	}
 	else {
 	    nodep->iterateChildren(*this);

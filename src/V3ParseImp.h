@@ -86,6 +86,7 @@ struct V3ParseBisonYYSType {
 	AstSenTree*	sentreep;
 	AstVar*		varp;
 	AstVarRef*	varrefp;
+	AstForeignEval*	foreignevalp;
     };
 };
 
@@ -139,6 +140,7 @@ public:
 
     void ppline (const char* text);
     void linenoInc() { fileline()->linenoInc(); }
+    string verilatorCmtSymbol(const char* textp);
     void verilatorCmtLint(const char* text, bool on);
     void verilatorCmtLintSave();
     void verilatorCmtLintRestore();

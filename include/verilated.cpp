@@ -1278,6 +1278,34 @@ string VL_CVT_PACK_STR_NW(int lwords, WDataInP lwp) {
 //===========================================================================
 // Verilated:: Methods
 
+const char* Verilated::s_foreignScope = NULL;
+static vector<const char*> g_foreignScope;
+
+void Verilated::pushForeignScope(const char* name) {
+    g_foreignScope.push_back(name);
+    s_foreignScope = NULL;
+}
+
+void Verilated::popForeignScope() {
+    g_foreignScope.pop_back();
+    s_foreignScope = NULL;
+}
+
+void Verilated::generateForeignScope() {
+    static string concat_scope;
+    concat_scope.clear();
+    if (!g_foreignScope.empty())
+	concat_scope += " [";
+    for (size_t i=0;i<g_foreignScope.size();++i) {
+	if (i)
+	    concat_scope += " ";
+	concat_scope += g_foreignScope[i];
+    }
+    if (!g_foreignScope.empty())
+	concat_scope += "]";
+    s_foreignScope = concat_scope.c_str();
+}
+
 const char* Verilated::catName(const char* n1, const char* n2) {
     // Returns new'ed data
     // Used by symbol table creation to make module names

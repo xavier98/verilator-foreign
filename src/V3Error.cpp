@@ -137,7 +137,7 @@ string V3Error::msgPrefix() {
 //======================================================================
 // Abort/exit
 
-void V3Error::vlAbort () {
+void V3Error::vlAbort () {  
     if (V3Error::debugDefault()) {
 	cerr<<msgPrefix()<<"Aborting since under --debug"<<endl;
 	abort();

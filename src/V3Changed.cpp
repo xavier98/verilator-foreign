@@ -260,7 +260,6 @@ private:
 	m_statep->m_tlChgFuncp = new AstCFunc(nodep->fileline(), "_change_request", scopep, "QData");
 	m_statep->m_tlChgFuncp->argTypes(EmitCBaseVisitor::symClassVar());
 	m_statep->m_tlChgFuncp->symProlog(true);
-	m_statep->m_tlChgFuncp->declPrivate(true);
 	m_statep->m_scopetopp->addActivep(m_statep->m_tlChgFuncp);
 	// Each change detection function needs at least one AstChangeDet
 	// to ensure that V3EmitC outputs the necessary code.

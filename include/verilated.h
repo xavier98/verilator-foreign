@@ -239,6 +239,10 @@ class Verilated {
     static VL_THREAD const char*	t_dpiFilename;	///< DPI context filename
     static VL_THREAD int		t_dpiLineno;	///< DPI context line number
 
+    // foreign modules scope tracking
+    static const char* s_foreignScope;
+    static void generateForeignScope();
+    
     // no need to be save-restored (serialized) the
     // assumption is that the restore is allowed to pass different arguments
     static struct CommandArgValues {
@@ -249,6 +253,13 @@ class Verilated {
 public:
 
     // METHODS - User called
+
+    static void pushForeignScope(const char* name);
+    static void popForeignScope();
+    static inline const char* foreignScope() {
+	if (VL_UNLIKELY(!s_foreignScope)) generateForeignScope();
+	return s_foreignScope;
+    }
 
     /// Select initial value of otherwise uninitialized signals.
     ////
@@ -471,6 +482,24 @@ extern double sc_time_stamp();
 # define VL_DEBUG_IF(text) {if (VL_UNLIKELY(Verilated::debug())) {text}}
 #else
 # define VL_DEBUG_IF(text)
+#endif
+
+#ifdef VL_DEBUG
+# define VL_DEBUG_PUSH_FOREIGN_SCOPE(name) {if (VL_UNLIKELY(Verilated::debug())) {Verilated::pushForeignScope(name);}}
+#else
+# define VL_DEBUG_PUSH_FOREIGN_SCOPE(name)
+#endif
+
+#ifdef VL_DEBUG
+# define VL_DEBUG_POP_FOREIGN_SCOPE() {if (VL_UNLIKELY(Verilated::debug())) {Verilated::popForeignScope();}}
+#else
+# define VL_DEBUG_POP_FOREIGN_SCOPE()
+#endif
+
+#ifdef VL_DEBUG
+# define VL_DEBUG_FOREIGN_SCOPE Verilated::foreignScope()
+#else
+# define VL_DEBUG_FOREIGN_SCOPE ""
 #endif
 
 /// Collect coverage analysis for this line

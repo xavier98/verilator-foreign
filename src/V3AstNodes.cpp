@@ -890,6 +890,18 @@ void AstNodeModule::dump(ostream& str) {
     if (modPublic()) str<<" [P]";
     if (inLibrary()) str<<" [LIB]";
     if (dead()) str<<" [DEAD]";
+    if (foreignModule()) {
+	str<<" [FM";
+	if (!foreignName().empty())
+	    str<<" foreign_"<<foreignName();
+	str<<"]";
+    }
+    if (foreignInterface()) {
+	str<<" [FI";
+	if (!foreignName().empty())
+	    str<<" "<<foreignName();
+	str<<"]";
+    }
 }
 void AstPackageImport::dump(ostream& str) {
     this->AstNode::dump(str);
@@ -1038,6 +1050,24 @@ void AstBegin::dump(ostream& str) {
     if (unnamed()) str<<" [UNNAMED]";
     if (generate()) str<<" [GEN]";
     if (genforp()) str<<" [GENFOR]";
+}
+void AstForeignInstance::dump(ostream& str) {
+    this->AstNode::dump(str);
+    str<<" ["<<modName()<<"]";
+}
+void AstForeignEval::dump(ostream& str) {
+    this->AstNode::dump(str);
+    if (unconditional())
+	str<<" [UNCOND]";
+    if (m_fi) {
+	str<<" -> ";
+	m_fi->dump(str);
+    }
+}
+void AstForeignRead::dump(ostream& str) {
+    this->AstNode::dump(str);
+    if (isPost())
+	str<<" [POST]";
 }
 void AstCoverDecl::dump(ostream& str) {
     this->AstNode::dump(str);

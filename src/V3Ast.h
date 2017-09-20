@@ -120,6 +120,8 @@ public:
 	NO_INLINE_MODULE,
 	NO_INLINE_TASK,
 	PUBLIC_MODULE,
+	FOREIGN_MODULE,
+	FOREIGN_INTERFACE,
 	PUBLIC_TASK
     };
     enum en m_e;
@@ -139,6 +141,7 @@ class AstCFuncType {
 public:
     enum en {
 	FT_NORMAL,
+	FT_FOREIGN,
 	TRACE_INIT,
 	TRACE_INIT_SUB,
 	TRACE_FULL,
@@ -156,6 +159,7 @@ public:
     bool isTrace() const { return (m_e==TRACE_INIT || m_e==TRACE_INIT_SUB
 				   || m_e==TRACE_FULL || m_e==TRACE_FULL_SUB
 				   || m_e==TRACE_CHANGE || m_e==TRACE_CHANGE_SUB); }
+    bool isForeign() const { return m_e==FT_FOREIGN; }
   };
   inline bool operator== (AstCFuncType lhs, AstCFuncType rhs) { return (lhs.m_e == rhs.m_e); }
   inline bool operator== (AstCFuncType lhs, AstCFuncType::en rhs) { return (lhs.m_e == rhs); }
@@ -1943,11 +1947,14 @@ class AstNodeModule : public AstNode {
 private:
     string	m_name;		// Name of the module
     string	m_origName;	// Name of the module, ignoring name() changes, for dot lookup
+    string	m_foreignName;	// Name of the generated foreign_interface module
     bool	m_modPublic:1;	// Module has public references
     bool	m_modTrace:1;	// Tracing this module
     bool	m_inLibrary:1;	// From a library, no error if not used, never top level
     bool	m_dead:1;	// LinkDot believes is dead; will remove in Dead visitors
     bool	m_internal:1;	// Internally created
+    bool	m_foreignInterface:1;	// This is a foreign_interface
+    bool	m_foreignModule:1;	// This is a foreign_module
     int		m_level;	// 1=top module, 2=cell off top module, ...
     int		m_varNum;	// Incrementing variable number
     int		m_typeNum;	// Incrementing implicit type number
@@ -1956,6 +1963,7 @@ public:
 	: AstNode (fl)
 	,m_name(name), m_origName(name)
 	,m_modPublic(false), m_modTrace(false), m_inLibrary(false), m_dead(false), m_internal(false)
+	,m_foreignInterface(false), m_foreignModule(false)
 	,m_level(0), m_varNum(0), m_typeNum(0) { }
     ASTNODE_BASE_FUNCS(NodeModule)
     virtual void dump(ostream& str);
@@ -1970,6 +1978,8 @@ public:
     // ACCESSORS
     virtual void name(const string& name) { m_name = name; }
     string origName() const	{ return m_origName; }
+    string foreignName() const { return m_foreignName; }
+    void foreignName(string foreignName) { m_foreignName = foreignName; }
     bool inLibrary() const 	{ return m_inLibrary; }
     void inLibrary(bool flag) 	{ m_inLibrary = flag; }
     void level(int level)	{ m_level = level; }
@@ -1985,6 +1995,10 @@ public:
     bool dead() const	 	{ return m_dead; }
     void internal(bool flag) 	{ m_internal = flag; }
     bool internal() const	{ return m_internal; }
+    void foreignInterface(bool flag) { m_foreignInterface = flag; }
+    bool foreignInterface() const { return m_foreignInterface; }
+    void foreignModule(bool flag) { m_foreignModule = flag; }
+    bool foreignModule() const { return m_foreignModule; }
 };
 
 //######################################################################

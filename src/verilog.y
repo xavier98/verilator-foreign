@@ -299,6 +299,7 @@ class AstSenTree;
 %token<fl>		yALWAYS_LATCH	"always_latch"
 %token<fl>		yAND		"and"
 %token<fl>		yASSERT		"assert"
+%token<fl>		yFOREIGN_SETTLE "foreign_settle"
 %token<fl>		yASSIGN		"assign"
 %token<fl>		yAUTOMATIC	"automatic"
 %token<fl>		yBEGIN		"begin"
@@ -516,6 +517,13 @@ class AstSenTree;
 %token<fl>		yVL_PUBLIC_FLAT_RD	"/*verilator public_flat_rd*/"
 %token<fl>		yVL_PUBLIC_FLAT_RW	"/*verilator public_flat_rw*/"
 %token<fl>		yVL_PUBLIC_MODULE	"/*verilator public_module*/"
+%token<fl>		yVL_FOREIGN_MODULE	"/*verilator foreign_module*/"
+%token<fl>		yVL_FOREIGN_INTERFACE	"/*verilator foreign_interface*/"
+%token<fl>		yVL_FOREIGN_EVAL	"/*verilator foreign_eval*/"
+%token<fl>		yVL_FOREIGN_DEPEND	"/*verilator foreign_depend*/"
+%token<fl>		yVL_FOREIGN_WRITE	"/*verilator foreign_write*/"
+%token<fl>		yVL_FOREIGN_READ	"/*verilator foreign_read*/"
+%token<fl>		yVL_FOREIGN_READ_POST	"/*verilator foreign_read_post*/"
 
 %token<fl>		yP_TICK		"'"
 %token<fl>		yP_TICKBRA	"'{"
@@ -1670,7 +1678,25 @@ non_port_module_item<nodep>:	// ==IEEE: non_port_module_item
 	|	yVL_INLINE_MODULE			{ $$ = new AstPragma($1,AstPragmaType::INLINE_MODULE); }
 	|	yVL_NO_INLINE_MODULE			{ $$ = new AstPragma($1,AstPragmaType::NO_INLINE_MODULE); }
 	|	yVL_PUBLIC_MODULE			{ $$ = new AstPragma($1,AstPragmaType::PUBLIC_MODULE); v3Global.dpi(true); }
+	|	yVL_FOREIGN_MODULE			{ $$ = new AstPragma($1,AstPragmaType::FOREIGN_MODULE); }
+| foreign_interface_decl { $$ = $1; } 
 	;
+
+foreign_interface_decl<nodep>:
+foreign_interface_header { $$ = $1; }
+| foreign_interface_header unconditional_foreign_write_list { $$ = $1; $1->addNextNull(new AstForeignEval($2->fileline(), $2)); }
+;
+foreign_interface_header<nodep>:
+yVL_FOREIGN_INTERFACE			{ $$ = new AstPragma($1,AstPragmaType::FOREIGN_INTERFACE, *$<strp>1); }
+;
+
+unconditional_foreign_write_list<nodep>:
+unconditional_foreign_write { $$ = $1; }
+| unconditional_foreign_write_list unconditional_foreign_write { $$ = $1; $1->addNextNull($2); }
+;
+unconditional_foreign_write<nodep>:
+        yVL_FOREIGN_WRITE			{ $$ = new AstForeignWrite($<fl>1,*$<strp>1,new AstParseRef($<fl>1,AstParseRefExp::PX_TEXT,*$<strp>1,NULL,NULL)); }
+;
 
 module_or_generate_item<nodep>:	// ==IEEE: module_or_generate_item
 	//			// IEEE: parameter_override
@@ -2141,6 +2167,7 @@ cellpinItemE<pinp>:		// IEEE: named_port_connection + empty
 
 attr_event_control<sentreep>:	// ==IEEE: event_control
 		'@' '(' event_expression ')'		{ $$ = new AstSenTree($1,$3); }
+        |       '@' '(' yFOREIGN_SETTLE ')'             { $$ = new AstSenTree($1,new AstSenItem($1, AstSenItem::Settle())); }
 	|	'@' '(' '*' ')'				{ $$ = NULL; }
 	|	'@' '*'					{ $$ = NULL; }
 	;
@@ -2152,6 +2179,7 @@ event_controlE<sentreep>:
 
 event_control<sentreep>:	// ==IEEE: event_control
 		'@' '(' event_expression ')'		{ $$ = new AstSenTree($1,$3); }
+        |       '@' '(' yFOREIGN_SETTLE ')'             { $$ = new AstSenTree($1,new AstSenItem($1, AstSenItem::Settle())); }
 	|	'@' '(' '*' ')'				{ $$ = NULL; }
 	|	'@' '*'					{ $$ = NULL; }
 	//			// IEEE: hierarchical_event_identifier
@@ -2379,8 +2407,52 @@ statement_item<nodep>:		// IEEE: statement_item
 	//
 	//UNSUP	expect_property_statement		{ $$ = $1; }
 	//
+	|	foreign_eval_decl			{ $$ = $1; }
 	|	error ';'				{ $$ = NULL; }
 	;
+
+foreign_eval_decl<nodep>:
+foreign_eval { $$ = $1; }
+| foreign_eval foreign_depend_list foreign_write_list foreign_read_list { $$ = $1; $1->addDepend($2); $1->addWrite($3); $1->addRead($4); }
+| foreign_eval foreign_depend_list foreign_write_list { $$ = $1; $1->addDepend($2); $1->addWrite($3); }
+| foreign_eval foreign_depend_list foreign_read_list { $$ = $1; $1->addDepend($2); $1->addRead($3); }
+| foreign_eval foreign_write_list foreign_read_list { $$ = $1; $1->addWrite($2); $1->addRead($3); }
+| foreign_eval foreign_depend_list { $$ = $1; $1->addDepend($2); }
+| foreign_eval foreign_write_list { $$ = $1; $1->addWrite($2); }
+| foreign_eval foreign_read_list { $$ = $1; $1->addRead($2); }
+;
+
+foreign_eval<foreignevalp>:
+yVL_FOREIGN_EVAL			{ $$ = new AstForeignEval($<fl>1,*$<strp>1); }
+;
+
+foreign_depend_list<nodep>:
+foreign_depend_list foreign_depend_item { $$ = $1->addNextNull($2); }
+| foreign_depend_item { $$ = $1; }
+;
+
+foreign_depend_item<nodep>:
+yVL_FOREIGN_DEPEND			{ $$ = new AstForeignDepend($<fl>1,*$<strp>1); }
+;
+
+foreign_write_list<nodep>:
+foreign_write_list foreign_write_item { $$ = $1->addNextNull($2); }
+| foreign_write_item { $$ = $1; }
+;
+
+foreign_write_item<nodep>:
+yVL_FOREIGN_WRITE			{ $$ = new AstForeignWrite($<fl>1,*$<strp>1,new AstParseRef($<fl>1,AstParseRefExp::PX_TEXT,*$<strp>1,NULL,NULL)); }
+;
+
+foreign_read_list<nodep>:
+foreign_read_list foreign_read_item { $$ = $1->addNextNull($2); }
+| foreign_read_item { $$ = $1; }
+;
+
+foreign_read_item<nodep>:
+yVL_FOREIGN_READ			{ $$ = new AstForeignRead($<fl>1,*$<strp>1,new AstParseRef($<fl>1,AstParseRefExp::PX_TEXT,*$<strp>1,NULL,NULL),false); }
+| yVL_FOREIGN_READ_POST			{ $$ = new AstForeignRead($<fl>1,*$<strp>1,new AstParseRef($<fl>1,AstParseRefExp::PX_TEXT,*$<strp>1,NULL,NULL),true); }
+;
 
 statementVerilatorPragmas<nodep>:
 		yVL_COVERAGE_BLOCK_OFF			{ $$ = new AstPragma($1,AstPragmaType::COVERAGE_BLOCK_OFF); }

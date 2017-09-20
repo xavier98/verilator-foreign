@@ -92,6 +92,18 @@ private:
 	}
 	m_setRefLvalue = last_setRefLvalue;
     }
+    virtual void visit(AstForeignRead* nodep) {
+	bool last_setRefLvalue = m_setRefLvalue;
+	m_setRefLvalue = true;
+	nodep->iterateChildren(*this);
+	m_setRefLvalue = last_setRefLvalue;
+    }
+    virtual void visit(AstForeignWrite* nodep) {
+	bool last_setRefLvalue = m_setRefLvalue;
+	m_setRefLvalue = false;
+	nodep->iterateChildren(*this);
+	m_setRefLvalue = last_setRefLvalue;
+    }
     virtual void visit(AstFOpen* nodep) {
 	bool last_setRefLvalue = m_setRefLvalue;
 	{

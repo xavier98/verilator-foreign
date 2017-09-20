@@ -88,6 +88,7 @@ class V3Options {
     bool	m_pinsUint8;	// main switch: --pins-uint8
     bool	m_profileCFuncs;// main switch: --profile-cfuncs
     bool	m_public;	// main switch: --public
+    bool        m_genForeignInterface;  // main switch: --gen-foreign-interface
     bool	m_reportUnoptflat; // main switch: --report-unoptflat
     bool	m_relativeIncludes; // main switch: --relative-includes
     bool	m_savable;	// main switch: --savable
@@ -240,6 +241,7 @@ class V3Options {
     bool pinsUint8() const { return m_pinsUint8; }
     bool profileCFuncs() const { return m_profileCFuncs; }
     bool allPublic() const { return m_public; }
+    bool genForeignInterface() const { return m_genForeignInterface; }
     bool lintOnly() const { return m_lintOnly; }
     bool ignc() const { return m_ignc; }
     bool inhibitSim() const { return m_inhibitSim; }

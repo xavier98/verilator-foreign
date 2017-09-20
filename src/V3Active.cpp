@@ -68,10 +68,7 @@ private:
     AstActive*	m_cActivep;		// For current scope, the SActive(combo) we're building
     vector<AstActive*>	m_activeVec;	// List of sensitive actives, for folding
     // METHODS
-    void addActive(AstActive* nodep) {
-	if (!m_scopep) nodep->v3fatalSrc("NULL scope");
-	m_scopep->addActivep(nodep);
-    }
+
     // VISITORS
     virtual void visit(AstScope* nodep) {
 	m_scopep = nodep;
@@ -96,6 +93,10 @@ private:
     // METHODS
 public:
     AstScope* scopep() { return m_scopep; }
+    void addActive(AstActive* nodep) {
+	if (!m_scopep) nodep->v3fatalSrc("NULL scope");
+	m_scopep->addActivep(nodep);
+    }
     AstActive* getCActive(FileLine* fl) {
 	if (!m_cActivep) {
 	    m_cActivep = new AstActive(fl, "combo",
@@ -317,6 +318,17 @@ private:
 	    // Never executing.  Kill it.
 	    if (oldsensesp->sensesp()->nextp()) nodep->v3fatalSrc("Never senitem should be alone, else the never should be eliminated.");
 	    nodep->unlinkFrBack()->deleteTree(); VL_DANGLING(nodep);
+	    return;
+	}
+
+	// Propogate foreign settles
+	if (oldsensesp && oldsensesp->hasSettle()) {
+	    AstActive* activep = new AstActive(nodep->fileline(), "foreign_settle", oldsensesp);
+	    oldsensesp->unlinkFrBack();
+	    activep->sensesStorep(oldsensesp);
+	    m_namer.addActive(activep);
+	    nodep->unlinkFrBack();
+	    activep->addStmtsp(nodep);
 	    return;
 	}
 

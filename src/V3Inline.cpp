@@ -240,6 +240,7 @@ private:
     RenamedInterfacesSet m_renamedInterfaces;	// Name of renamed interface variables
     AstNodeModule*	m_modp;		// Current module
     AstCell*		m_cellp;	// Cell being cloned
+    AstForeignInstance* m_fi;
 
     static int debug() {
 	static int level = -1;
@@ -414,15 +415,28 @@ private:
 		    + nodep->hier());
 	nodep->iterateChildren(*this);
     }
+
+    virtual void visit(AstForeignEval* nodep) {
+	if (!m_fi && !nodep->foreignInstance())
+	    return;
+	if (m_fi)
+	    nodep->foreignInstance(m_fi);
+	nodep->iterateChildren(*this);
+    }
+   
     virtual void visit(AstNode* nodep) {
 	nodep->iterateChildren(*this);
     }
 
+    
+
 public:
     // CONSTUCTORS
-    InlineRelinkVisitor(AstNodeModule* cloneModp, AstNodeModule* oldModp, AstCell* cellp) {
+    InlineRelinkVisitor(AstNodeModule* cloneModp, AstNodeModule* oldModp, AstCell* cellp,
+	AstForeignInstance* fi) {
 	m_modp = oldModp;
 	m_cellp = cellp;
+	m_fi = fi;
 	cloneModp->accept(*this);
     }
     virtual ~InlineRelinkVisitor() {}
@@ -491,6 +505,7 @@ private:
 	    // Clone original module
 	    if (debug()>=9) { nodep->dumpTree(cout,"inlcell:"); }
 	    //if (debug()>=9) { nodep->modp()->dumpTree(cout,"oldmod:"); }
+    
 	    AstNodeModule* newmodp = nodep->modp()->cloneTree(false);
 	    if (debug()>=9) { newmodp->dumpTree(cout,"newmod:"); }
 	    // Clear var markings and find cell cross references
@@ -501,7 +516,17 @@ private:
 	    AstCellInline* inlinep = new AstCellInline(nodep->fileline(),
 						       nodep->name(), nodep->modp()->origName());
 	    m_modp->addInlinesp(inlinep);  // Must be parsed before any AstCells
-	    // Create assignments to the pins
+
+	    // If this is a foreign_interface, generate a AstForeignInstance that we can attach
+	    // to AstForeignEval, AstForeignRead, and AstForeignWrite and also use to emit
+	    // instantiations of foreign implementation.
+	    AstForeignInstance* fi = 0;
+	    if (nodep->modp()->foreignInterface()) {
+		fi = new AstForeignInstance(nodep->fileline(), nodep->name(), nodep->modp()->foreignName());
+		newmodp->addStmtp(fi);
+	    }
+
+            // Create assignments to the pins
 	    for (AstPin* pinp = nodep->pinsp(); pinp; pinp=pinp->nextp()->castPin()) {
 		if (!pinp->exprp()) continue;
 		UINFO(6,"     Pin change from "<<pinp->modVarp()<<endl);
@@ -538,7 +563,7 @@ private:
 		pinNewVarp->user3(pinNewVarp->isSigUserRWPublic() && pinNewVarp->isOutOnly());
 	    }
 	    // Cleanup var names, etc, to not conflict
-	    { InlineRelinkVisitor(newmodp, m_modp, nodep); }
+	    { InlineRelinkVisitor(newmodp, m_modp, nodep, fi); }
 	    // Move statements to top module
 	    if (debug()>=9) { newmodp->dumpTree(cout,"fixmod:"); }
 	    AstNode* stmtsp = newmodp->stmtsp();

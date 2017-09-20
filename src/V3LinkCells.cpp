@@ -128,7 +128,10 @@ private:
 	else return foundp->nodep()->castNodeModule();
     }
 
-    AstNodeModule* resolveModule(AstNode* nodep, const string& modName) {
+    AstNodeModule* resolveModule(AstNode* nodep, const string& modName, AstNodeModule*& underlying_modp) {
+	UINFO(2, "resolveModule: "<<modName<<endl);
+	underlying_modp = 0;
+	
 	AstNodeModule* modp = findModuleSym(modName);
 	if (!modp) {
 	    // Read-subfile
@@ -147,6 +150,23 @@ private:
 		nodep->v3error("Can't resolve module reference: "<<prettyName);
 	    }
 	}
+
+	// if the module is declared with foreign_module, resolve foreign_NAME in its place.
+	// i.e., if you include module NAME, transparently use the previously-generated
+	// foreign_interface file
+	bool is_foreign_module = false;
+	for (AstNode* stmtp=modp->stmtsp();stmtp;stmtp=stmtp->nextp()) {
+	    AstPragma* pragma = stmtp->castPragma();
+	    if (!pragma || pragma->pragType() != AstPragmaType::FOREIGN_MODULE)
+		continue;
+	    is_foreign_module = true;
+	}
+	if (is_foreign_module) {
+	    underlying_modp = modp;
+	    AstNodeModule* underlying_modp;
+	    modp = resolveModule(nodep, (string)"foreign_"+modName, underlying_modp);
+	}
+	
 	return modp;
     }
 
@@ -222,11 +242,14 @@ private:
 	UINFO(4,"Link IfaceRef: "<<nodep<<endl);
 	// Use findIdUpward instead of findIdFlat; it doesn't matter for now
 	// but we might support modules-under-modules someday.
-	AstNodeModule* modp = resolveModule(nodep, nodep->ifaceName());
+	AstNodeModule* underlying_modp;
+	AstNodeModule* modp = resolveModule(nodep, nodep->ifaceName(), underlying_modp);
 	if (modp) {
 	    if (modp->castIface()) {
 		// Track module depths, so can sort list from parent down to children
 		new V3GraphEdge(&m_graph, vertex(m_modp), vertex(modp), 1, false);
+		if (underlying_modp)
+		    new V3GraphEdge(&m_graph, vertex(m_modp), vertex(underlying_modp), 1, false);
 		if (!nodep->cellp()) nodep->ifacep(modp->castIface());
 	    } else if (modp->castNotFoundModule()) {  // Will error out later
 	    } else {
@@ -249,7 +272,8 @@ private:
 	// this move to post param, which would mean we do not auto-read modules
 	// and means we cannot compute module levels until later.
 	UINFO(4,"Link Bind: "<<nodep<<endl);
-	AstNodeModule* modp = resolveModule(nodep,nodep->name());
+	AstNodeModule* underlying_modp;
+	AstNodeModule* modp = resolveModule(nodep,nodep->name(),underlying_modp);
 	if (modp) {
 	    AstNode* cellsp = nodep->cellsp()->unlinkFrBackWithNext();
 	    // Module may have already linked, so need to pick up these new cells
@@ -271,11 +295,14 @@ private:
 	    UINFO(4,"Link Cell: "<<nodep<<endl);
 	    // Use findIdFallback instead of findIdFlat; it doesn't matter for now
 	    // but we might support modules-under-modules someday.
-	    AstNodeModule* modp = resolveModule(nodep,nodep->modName());
+	    AstNodeModule* underlying_modp;
+	    AstNodeModule* modp = resolveModule(nodep,nodep->modName(), underlying_modp);
 	    if (modp) {
 		nodep->modp(modp);
 		// Track module depths, so can sort list from parent down to children
 		new V3GraphEdge(&m_graph, vertex(m_modp), vertex(modp), 1, false);
+		if (underlying_modp)
+		    new V3GraphEdge(&m_graph, vertex(m_modp), vertex(underlying_modp), 1, false);
 	    }
 	}
 	// Remove AstCell(AstPin("",NULL)), it's a side effect of how we parse "()"
@@ -394,6 +421,7 @@ private:
 	// Look at all modules, and store pointers to all module names
 	for (AstNodeModule* nextp,* nodep = v3Global.rootp()->modulesp(); nodep; nodep=nextp) {
 	    nextp = nodep->nextp()->castNodeModule();
+    
 	    AstNodeModule* foundp = findModuleSym(nodep->name());
 	    if (foundp && foundp != nodep) {
 		if (!(foundp->fileline()->warnIsOff(V3ErrorCode::MODDUP) || nodep->fileline()->warnIsOff(V3ErrorCode::MODDUP))) {
@@ -403,6 +431,9 @@ private:
 		nodep->unlinkFrBack();
 		pushDeletep(nodep); VL_DANGLING(nodep);
 	    } else if (!foundp) {
+
+		UINFO(2,"readModNames first time: "<<nodep->name()<<endl);
+		
 		m_mods.rootp()->insert(nodep->name(), new VSymEnt(&m_mods, nodep));
 	    }
 	}

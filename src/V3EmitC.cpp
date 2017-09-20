@@ -731,6 +731,10 @@ public:
 	}
     }
 
+    // AstForeignInstance are special cased elsewhere
+    virtual void visit(AstForeignInstance* nodep) {
+    }
+
     // Just iterate
     virtual void visit(AstNetlist* nodep) {
 	nodep->iterateChildren(*this);
@@ -864,6 +868,8 @@ class EmitCImp : EmitCStmts {
 	// TRACE_* and DPI handled elsewhere
 	if (nodep->funcType().isTrace()) return;
 	if (nodep->dpiImport()) return;
+	// Foreign AstCFuncs are internal only
+	if (nodep->funcType().isForeign()) return;
 	if (!(nodep->slow() ? m_slow : m_fast)) return;
 
 	m_blkChangeDetVec.clear();
@@ -879,7 +885,7 @@ class EmitCImp : EmitCStmts {
 	puts("VL_DEBUG_IF(VL_PRINTF(\"  ");
 	for (int i=0;i<m_modp->level();i++) { puts("  "); }
 	puts(modClassName(m_modp)+"::"+nodep->name()
-	     +"\\n\"); );\n");
+	     +"%s\\n\",VL_DEBUG_FOREIGN_SCOPE); );\n");
 
 	if (nodep->symProlog()) puts(EmitCBaseVisitor::symTopAssign()+"\n");
 
@@ -942,6 +948,18 @@ class EmitCImp : EmitCStmts {
 		}
 	    }
 	}
+
+	for (AstNode* nodep=m_modp->stmtsp(); nodep; nodep = nodep->nextp()) {
+	    if (AstForeignInstance* fi = nodep->castForeignInstance()) {
+		puts("__req |= ");
+		puts("vlTOPp->__F");
+		puts(fi->name());
+		puts("->_change_request(vlTOPp->__F");
+		puts(fi->name());
+		puts("->__VlSymsp);\n");
+	    }
+	}
+
     }
 
     virtual void visit(AstChangeDet* nodep) {
@@ -1572,6 +1590,18 @@ void EmitCImp::emitDestructorImp(AstNodeModule* modp) {
     puts(modClassName(modp)+"::~"+modClassName(modp)+"() {\n");
     emitTextSection(AstType::atScDtor);
     if (modp->isTop()) puts("delete __VlSymsp; __VlSymsp=NULL;\n");
+
+    // Destruct foreign modules
+    for (AstNode* nodep=modp->stmtsp(); nodep; nodep = nodep->nextp()) {
+	if (AstForeignInstance* fi = nodep->castForeignInstance()) {
+	    puts("delete __F");
+	    puts(fi->name());
+	    puts("; __F");
+	    puts(fi->name());
+	    puts("=NULL;\n");
+	}
+    }
+
     puts("}\n");
     splitSizeInc(10);
 }
@@ -1692,6 +1722,19 @@ void EmitCImp::emitCellCtors(AstNodeModule* modp) {
 	    puts("VL_CELL ("+cellp->name()+", "+modClassName(cellp->modp())+");\n");
 	}
     }
+
+    // Construct foreign modules
+    for (AstNode* nodep=modp->stmtsp(); nodep; nodep = nodep->nextp()) {
+	if (AstForeignInstance* fi = nodep->castForeignInstance()) {
+	    puts("__F");
+	    puts(fi->name());
+	    puts(" = new ");
+	    puts("V");
+	    puts(fi->modName());
+	    puts("();\n");
+	}
+    }
+
 }
 
 void EmitCImp::emitSensitives() {
@@ -1760,7 +1803,7 @@ void EmitCImp::emitWrapEval(AstNodeModule* modp) {
     puts(    "while (VL_LIKELY(__Vchange)) {\n");
     puts(        "_eval_settle(vlSymsp);\n");
     puts(        "_eval(vlSymsp);\n");
-    puts(	 "__Vchange = _change_request(vlSymsp);\n");
+    puts(    "__Vchange = _change_request(vlSymsp);\n");
     puts(        "if (++__VclockLoop > "+cvtToStr(v3Global.opt.convergeLimit())
 		 +") vl_fatal(__FILE__,__LINE__,__FILE__,\"Verilated model didn't DC converge\");\n");
     puts(    "}\n");
@@ -1885,6 +1928,20 @@ void EmitCImp::emitInt(AstNodeModule* modp) {
 	puts("class "+v3Global.opt.traceClassBase()+";\n");
     }
 
+    // Forward-declare foreign modules
+    set<string> distinct_foreign_modules;
+    for (AstNode* nodep=modp->stmtsp(); nodep; nodep = nodep->nextp()) {
+	if (AstForeignInstance* fi = nodep->castForeignInstance()) {
+	    distinct_foreign_modules.insert(fi->modName());
+	}
+    }
+    for (set<string>::iterator it=distinct_foreign_modules.begin();
+	 it!=distinct_foreign_modules.end();++it) {
+	puts("class V");
+	puts(*it);
+	puts(";\n");
+    }
+
     puts("\n//----------\n\n");
     emitTextSection(AstType::atScHdr);
 
@@ -1956,6 +2013,17 @@ void EmitCImp::emitInt(AstNodeModule* modp) {
 		}
 		puts("\n");
 	    }
+	}
+    }
+
+    puts("\n// FOREIGN INSTANCES\n");
+    for (AstNode* nodep=modp->stmtsp(); nodep; nodep = nodep->nextp()) {
+	if (AstForeignInstance* fi = nodep->castForeignInstance()) {
+	    puts("V");
+	    puts(fi->modName());
+	    puts("* __F");
+	    puts(fi->name());
+	    puts(";\n");
 	}
     }
 
@@ -2055,6 +2123,20 @@ void EmitCImp::emitImp(AstNodeModule* modp) {
     // Us
     puts("#include \""+ symClassName() +".h\"\n");
 
+    // Include foreign module headers
+    set<string> distinct_foreign_modules;
+    for (AstNode* nodep=modp->stmtsp(); nodep; nodep = nodep->nextp()) {
+	if (AstForeignInstance* fi = nodep->castForeignInstance()) {
+	    distinct_foreign_modules.insert(fi->modName());
+	}
+    }
+    for (set<string>::iterator it=distinct_foreign_modules.begin();
+	 it!=distinct_foreign_modules.end();++it) {
+	puts("#include \"V");
+	puts(*it);
+	puts(".h\"\n");
+    }
+
     if (v3Global.dpi()) {
 	puts("\n");
 	puts("#include \"verilated_dpi.h\"\n");
@@ -2152,7 +2234,7 @@ void EmitCImp::main(AstNodeModule* modp, bool slow, bool fast) {
 class EmitCTrace : EmitCStmts {
     AstCFunc*	m_funcp;	// Function we're in now
     bool	m_slow;		// Making slow file
-
+    
     // METHODS
     void newOutCFile(int filenum) {
 	string filename = (v3Global.opt.makeDir()+"/"+ topClassName()
@@ -2176,18 +2258,70 @@ class EmitCTrace : EmitCStmts {
 	puts("#include \"verilated_vcd_c.h\"\n");
 	puts("#include \""+ symClassName() +".h\"\n");
 	puts("\n");
+
+    	// Include foreign module headers
+	set<string> distinct_foreign_modules;
+	for (AstNodeModule* modp = v3Global.rootp()->modulesp();
+	     modp; modp=modp->nextp()->castNodeModule()) {
+	    for (AstNode* nodep=modp->stmtsp(); nodep; nodep = nodep->nextp()) {
+		if (AstForeignInstance* fi = nodep->castForeignInstance()) {
+		    distinct_foreign_modules.insert(fi->modName());
+		}
+	    }
+	}
+	for (set<string>::iterator it=distinct_foreign_modules.begin();
+	     it!=distinct_foreign_modules.end();++it) {
+	    puts("#include \"V");
+	    puts(*it);
+	    puts(".h\"\n");
+	}
     }
 
     void emitTraceSlow() {
 	puts("\n//======================\n\n");
 
 	puts("void "+topClassName()+"::trace (");
-	puts("VerilatedVcdC* tfp, int, int) {\n");
+	puts("VerilatedVcdC* tfp, int levels, int options) {\n");
+
+	// Register symbols for this model
 	puts(  "tfp->spTrace()->addCallback ("
 	       "&"+topClassName()+"::traceInit"
 	       +", &"+topClassName()+"::traceFull"
 	       +", &"+topClassName()+"::traceChg, this);\n");
+
+	// Register symbols from foreign instances
+	for (AstNodeModule* modp = v3Global.rootp()->modulesp();
+	     modp; modp=modp->nextp()->castNodeModule()) {
+	    bool gotOne = false;
+	    for (AstNode* nodep=modp->stmtsp(); nodep; nodep = nodep->nextp()) {
+		if (AstForeignInstance* fi = nodep->castForeignInstance()) {
+		    if (!gotOne) {
+			gotOne = true;
+			puts("bool top = !tfp->spTrace()->scopeDepth();\n");
+			puts("if (top) tfp->spTrace()->pushScope(\"");
+			string top_name = modp->name();
+			if (top_name.substr(0,4) == "TOP_") top_name.replace(0,4,"");;
+			puts(top_name);
+			puts("\");\n");
+		    }
+
+		    puts("tfp->spTrace()->pushScope(\"");
+		    puts(fi->name());
+		    puts("\");\n");
+		    puts("__F");
+		    puts(fi->name());
+		    puts("->trace(tfp, levels, options);\n");
+		    puts("tfp->spTrace()->popScope();\n");
+		}
+	    }
+
+	    if (gotOne) {
+		puts("if (top) tfp->spTrace()->popScope();\n");
+	    }
+	}
+
 	puts("}\n");
+
 	splitSizeInc(10);
 
 	puts("void "+topClassName()+"::traceInit("

@@ -93,15 +93,16 @@ private:
     enum VarUsage { VU_NONE=0, VU_DLY=1, VU_NONDLY=2 };
 
     // STATE
-    AstActive*		m_activep;	// Current activate
-    AstCFunc*		m_cfuncp;	// Current public C Function
-    AstAssignDly*	m_nextDlyp;	// Next delayed assignment in a list of assignments
-    bool		m_inDly;	// True in delayed assignments
-    bool		m_inLoop;	// True in for loops
-    bool		m_inInitial;	// True in intial blocks
+    AstActive*		m_activep;	 // Current activate
+    AstCFunc*		m_cfuncp;	 // Current public C Function
+    AstAssignDly*	m_nextDlyp;	 // Next delayed assignment in a list of assignments
+    bool		m_inDly;	 // True in delayed assignments
+    bool		m_inLoop;	 // True in for loops
+    bool		m_inInitial;	 // True in intial blocks
+    bool                m_inClocked;     // True in clocked blocks
     typedef std::map<pair<AstNodeModule*,string>,AstVar*> VarMap;
-    VarMap		m_modVarMap;	// Table of new var names created under module
-    V3Double0		m_statSharedSet;// Statistic tracking
+    VarMap		m_modVarMap;	 // Table of new var names created under module
+    V3Double0		m_statSharedSet; // Statistic tracking
 
 
     // METHODS
@@ -357,8 +358,11 @@ private:
 	m_activep = nodep;
 	bool oldinit = m_inInitial;
 	m_inInitial = nodep->hasInitial();
+	bool oldclocked = m_inClocked;
+	m_inClocked = nodep->hasClocked();
 	AstNode::user3ClearTree();  // Two sets to same variable in different actives must use different vars.
 	nodep->iterateChildren(*this);
+	m_inClocked = oldclocked;
 	m_inInitial = oldinit;
     }
     virtual void visit(AstAssignDly* nodep) {
@@ -383,6 +387,16 @@ private:
 	}
 	m_inDly = false;
 	m_nextDlyp = NULL;
+    }
+
+    // If clocked signals from foreign modules are post values (foreign_read_post),
+    // generate __Vdly intermediate just like delayed assigns.
+    virtual void visit(AstForeignRead* nodep) {
+	if (!m_inClocked || !nodep->isPost())
+	    return;
+	m_inDly = true;
+	nodep->iterateChildren(*this);
+	m_inDly = false;
     }
 
     virtual void visit(AstVarRef* nodep) {
@@ -457,6 +471,7 @@ public:
 	m_nextDlyp=NULL;
 	m_inLoop = false;
 	m_inInitial = false;
+	m_inClocked = false;
 
 	nodep->accept(*this);
     }

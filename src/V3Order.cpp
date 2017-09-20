@@ -462,9 +462,28 @@ private:
     bool		m_inClkAss;	// Underneath AstAssign
     bool		m_inPre;	// Underneath AstAssignPre
     bool		m_inPost;	// Underneath AstAssignPost
+    bool		m_inForeignRead;  // Underneath AstForeignRead
+    bool		m_inForeignWrite; // Underneath AstForeignWrite
     OrderLogicVertex*	m_activeSenVxp;	// Sensitivity vertex
     deque<OrderUser*>	m_orderUserps;	// All created OrderUser's for later deletion.
+
+    multimap<pair<AstForeignInstance*,string>, V3GraphVertex*> m_foreignEvalVertices;
+    struct ForeignEdgeInfo {
+	AstForeignInstance* m_fi;
+	string m_from_fe;
+	string m_to_fe;
+	ForeignEdgeInfo(AstForeignInstance* fi, string from_fe, string to_fe)
+	    : m_fi(fi), m_from_fe(from_fe), m_to_fe(to_fe) {
+	}
+    };
+    vector<ForeignEdgeInfo> m_foreign_edge_info;
+    AstForeignEval* m_fe;
+
     // STATE... for inside process
+    OrderLoopId			m_loopIdMax;	// Maximum BeginLoop id number assigned
+    vector<OrderLoopEndVertex*> m_pmlLoopEndps;	// processInsLoop: End vertex for each color
+    vector<OrderLoopBeginVertex*> m_pomLoopMoveps;// processMoveLoop: Loops next nodes are under
+
     AstCFunc*			m_pomNewFuncp;	// Current function being created
     int				m_pomNewStmts;	// Statements in function being created
     V3Graph			m_pomGraph;	// Graph of logic elements to move
@@ -498,6 +517,13 @@ private:
 	    AstSenTree* startDomainp = m_activep->sensesp();
 	    if (startDomainp->hasCombo()) startDomainp=NULL;
 	    m_logicVxp = new OrderLogicVertex(&m_graph, m_scopep, startDomainp, nodep);
+
+	    AstForeignEval* fe = nodep->castForeignEval();
+	    if (fe) {
+		m_foreignEvalVertices.insert
+		    (make_pair(make_pair(fe->foreignInstance(),nodep->name()),m_logicVxp));
+	    }
+
 	    if (m_activeSenVxp) {
 		// If in a clocked activation, add a link from the sensitivity to this block
 		// Add edge logic_sensitive_vertex->logic_vertex
@@ -814,8 +840,15 @@ private:
 		bool con = false;
 		if (nodep->lvalue()) {
 		    gen = !(varscp->user4() & VU_GEN);
+
+		    if (m_inForeignRead)
+			gen = true;
 		} else {
 		    con = !(varscp->user4() & VU_CON);
+
+		    if (m_inForeignWrite)
+			con = true;
+
 		    if ((varscp->user4() & VU_GEN) && !m_inClocked) {
 			// Dangerous assumption:
 			// If a variable is used in the same activation which defines it first,
@@ -970,6 +1003,47 @@ private:
 	m_inPost = false;
 	m_inClkAss = false;
     }
+    virtual void visit(AstForeignRead* nodep) {
+	m_inForeignRead = true;
+//	m_inPre = m_inClocked;
+	nodep->iterateChildren(*this);
+//	m_inPre = false;
+	m_inForeignRead = false;
+    }
+    virtual void visit(AstForeignWrite* nodep) {
+	m_inForeignWrite = true;
+//	m_inPre = m_inClocked;
+	nodep->iterateChildren(*this);
+//	m_inPre = false;
+	m_inForeignWrite = false;
+    }
+    virtual void visit(AstForeignDepend* nodep) {
+	m_foreign_edge_info.push_back(ForeignEdgeInfo(m_fe->foreignInstance(),nodep->name(),m_fe->name()));
+    }
+    void connectForeignEvals() {
+	for (size_t i=0;i<m_foreign_edge_info.size();++i) {
+	    ForeignEdgeInfo& fei = m_foreign_edge_info[i];
+	    multimap<pair<AstForeignInstance*,string>, V3GraphVertex*>::iterator
+		from_it = m_foreignEvalVertices.find(make_pair(fei.m_fi, fei.m_from_fe));
+	    if (from_it == m_foreignEvalVertices.end())
+		continue;
+	    multimap<pair<AstForeignInstance*,string>, V3GraphVertex*>::iterator
+		to_it = m_foreignEvalVertices.find(make_pair(fei.m_fi, fei.m_to_fe));
+	    if (to_it == m_foreignEvalVertices.end())
+		continue;
+	    V3GraphVertex* from_v = from_it->second;
+	    V3GraphVertex* to_v = to_it->second;
+
+	    new OrderEdge(&m_graph, from_v, to_v, WEIGHT_MEDIUM, true);
+	}
+	m_foreignEvalVertices.clear();
+	m_foreign_edge_info.clear();
+    }
+    virtual void visit(AstForeignEval* nodep) {
+	m_fe = nodep;
+	iterateNewStmt(nodep);
+	m_fe = NULL;
+    }
     virtual void visit(AstCoverToggle* nodep) {
 	iterateNewStmt(nodep);
     }
@@ -1000,7 +1074,11 @@ public:
 	m_inSenTree = false;
 	m_inClocked = false;
 	m_inClkAss = false;
-	m_inPre = m_inPost = false;
+	m_inPre = false;
+	m_inPost = false;
+	m_inForeignRead = false;
+	m_inForeignWrite = false;
+	m_fe = NULL;
 	m_comboDomainp = NULL;
 	m_deleteDomainp = NULL;
 	m_settleDomainp = NULL;
@@ -1555,6 +1633,9 @@ inline void OrderMoveDomScope::movedVertex(OrderVisitor* ovp, OrderMoveVertex* v
 // Top processing
 
 void OrderVisitor::process() {
+    // Connect foreign evals
+    connectForeignEvals();
+    
     // Dump data
     m_graph.dumpDotFilePrefixed("orderg_pre");
 

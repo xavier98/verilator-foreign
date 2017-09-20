@@ -23,6 +23,7 @@
 #include "verilatedos.h"
 #include "verilated.h"
 #include "verilated_vcd_c.h"
+#include <iostream> // * remove this
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -67,11 +68,12 @@ protected:
     VerilatedVcdCallback_t	m_changecb;	///< Incremental Dumping Callback function
     void*		m_userthis;	///< Fake "this" for caller
     vluint32_t		m_code;		///< Starting code number
+    string m_scope_concat;              ///< Concat form of inter-module m_scope
     // CREATORS
     VerilatedVcdCallInfo (VerilatedVcdCallback_t icb, VerilatedVcdCallback_t fcb,
 			  VerilatedVcdCallback_t changecb,
 			  void* ut, vluint32_t code)
-	: m_initcb(icb), m_fullcb(fcb), m_changecb(changecb), m_userthis(ut), m_code(code) {};
+	: m_initcb(icb), m_fullcb(fcb), m_changecb(changecb), m_userthis(ut), m_code(code) {}
 };
 
 //=============================================================================
@@ -196,6 +198,7 @@ void VerilatedVcd::makeNameMap() {
     for (vluint32_t ent = 0; ent< m_callbacks.size(); ent++) {
 	VerilatedVcdCallInfo *cip = m_callbacks[ent];
 	cip->m_code = nextCode();
+	m_scope_concat = cip->m_scope_concat;	
 	(cip->m_initcb) (this, cip->m_userthis, cip->m_code);
     }
 
@@ -403,7 +406,7 @@ void VerilatedVcd::dumpHeader () {
     printStr(" $end\n");
 
     makeNameMap();
-
+    
     // Signal header
     assert (m_modDepth==0);
     printIndent(1);
@@ -473,12 +476,60 @@ void VerilatedVcd::dumpHeader () {
 }
 
 void VerilatedVcd::module (const string& name) {
-    m_modName = name;
+    if (m_scope_concat.empty())
+	m_modName = name;
+}
+
+void VerilatedVcd::pushScope (const string& name) {
+    m_scope.push_back(name);
+}
+
+void VerilatedVcd::popScope () {
+    m_scope.pop_back();
+}
+
+size_t VerilatedVcd::scopeDepth () const {
+    return m_scope.size();
 }
 
 void VerilatedVcd::declare (vluint32_t code, const char* name, const char* wirep,
 			    int arraynum, bool tri, bool bussed, int msb, int lsb) {
     if (!code) { vl_fatal(__FILE__,__LINE__,"","Internal: internal trace problem, code 0 is illegal"); }
+
+    // If we have active inter-module, drop declarations of only a single symbol,
+    // and otherwise replace the first symbol with the concatenated scope
+    string nameasstr = name;
+    if (!m_scope_concat.empty()) {
+	size_t p0 = nameasstr.find(" ");
+	if (p0 == string::npos)
+	    return;
+	nameasstr.replace(nameasstr.begin(),nameasstr.begin()+p0,m_scope_concat);
+    }
+
+    // Optional ->module prefix
+    if (m_modName!="") {
+	nameasstr = m_modName+m_scopeEscape+nameasstr;
+    }
+    
+    // Split name into basename
+    // Spaces and tabs aren't legal in VCD signal names, so:
+    // Space separates each level of scope
+    // Tab separates final scope from signal name
+    // Tab sorts before spaces, so signals nicely will print before scopes
+    // Note the hiername may be nothing, if so we'll add "\t{name}"
+    string hiername;
+    string basename;
+    for (const char* cp=nameasstr.c_str(); *cp; cp++) {
+	if (isScopeEscape(*cp)) {
+	    // Ahh, we've just read a scope, not a basename
+	    if (hiername!="") hiername += " ";
+	    hiername += basename;
+	    basename = "";
+	} else {
+	    basename += *cp;
+	}
+    }
+    hiername += "\t"+basename;
 
     int bits = ((msb>lsb)?(msb-lsb):(lsb-msb))+1;
     int codesNeeded = 1+int(bits/32);
@@ -496,28 +547,6 @@ void VerilatedVcd::declare (vluint32_t code, const char* name, const char* wirep
     // Save declaration info
     VerilatedVcdSig sig = VerilatedVcdSig(code, bits);
     m_sigs.push_back(sig);
-
-    // Split name into basename
-    // Spaces and tabs aren't legal in VCD signal names, so:
-    // Space separates each level of scope
-    // Tab separates final scope from signal name
-    // Tab sorts before spaces, so signals nicely will print before scopes
-    // Note the hiername may be nothing, if so we'll add "\t{name}"
-    string nameasstr = name;
-    if (m_modName!="") { nameasstr = m_modName+m_scopeEscape+nameasstr; }  // Optional ->module prefix
-    string hiername;
-    string basename;
-    for (const char* cp=nameasstr.c_str(); *cp; cp++) {
-	if (isScopeEscape(*cp)) {
-	    // Ahh, we've just read a scope, not a basename
-	    if (hiername!="") hiername += " ";
-	    hiername += basename;
-	    basename = "";
-	} else {
-	    basename += *cp;
-	}
-    }
-    hiername += "\t"+basename;
 
     // Print reference
     string decl = "$var ";
@@ -600,6 +629,13 @@ void VerilatedVcd::addCallback (
 	vl_fatal(__FILE__,__LINE__,"",msg.c_str());
     }
     VerilatedVcdCallInfo* vci = new VerilatedVcdCallInfo(initcb, fullcb, changecb, userthis, nextCode());
+
+    for (size_t i=0;i<m_scope.size();++i) {
+	if (i)
+	    vci->m_scope_concat += " ";
+	vci->m_scope_concat += m_scope[i];
+    }
+
     m_callbacks.push_back(vci);
 }
 

@@ -91,6 +91,7 @@
 #include "V3Unknown.h"
 #include "V3Unroll.h"
 #include "V3Width.h"
+#include "V3EmitFI.h"
 
 V3Global v3Global;
 
@@ -387,6 +388,9 @@ void process () {
 
 	// Order the code; form SBLOCKs and BLOCKCALLs
 	V3Order::orderAll(v3Global.rootp());
+
+	// emit foreign interface files, if any
+	V3EmitFI::emitFI(v3Global.rootp());
 
 	// Change generated clocks to look at delayed signals
 	V3GenClk::genClkAll(v3Global.rootp());
